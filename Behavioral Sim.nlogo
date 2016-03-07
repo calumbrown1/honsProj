@@ -1,6 +1,24 @@
 globals [numOfFood maxNumOfFood]  ;; keep track of how much grass there is
 breed [roach a-roach]  ;; roach is its own plural, so we use "a-roach" as the singular.
-turtles-own [energy foodTarget]
+turtles-own
+[
+  ;;energy of agent
+  energy
+
+  ;;STATES
+  ;; 0 = WANDER
+  ;; randomly move around with no goal
+  ;; 1 = SEEK FOOD
+  ;; pick food and move to it
+  ;; 2 = FLEE
+  ;; move away from threat
+  ;; 3 = SEEK MATE
+  ;; find bug of same color and mate
+  state
+
+  foodPatch
+
+]
 patches-own [countdown  foodSpawn]
 
 
@@ -15,6 +33,8 @@ to setup
   ask patches [ set pcolor green ]
   create-roach initial-number-roach  ;; create the roach, then initialize their variables
   [
+    set foodPatch patch-here
+    set state 0
     set color red
     set size 1.5  ;; easier to see
     set label-color blue - 2
@@ -26,6 +46,56 @@ to setup
   reset-ticks
 end
 
+to turtlefsm
+  ifelse state = 0 [wander]
+    [ifelse state = 1 [findfood]
+      [ifelse state = 2 [flee]
+        [ifelse state = 3 [seekmate]
+          [ifelse state = 4 [movetofood]
+            [ifelse state = 5 [eatfood]
+              [
+          ]]]]]]
+
+
+end
+
+to wander  ;; turtle procedure
+  ;; randomly rotates the turtle and
+  ;; moves it forward
+  rt random 50
+  lt random 50
+  fd 0.25
+  if energy <= 0 and state != 4 [set state 1]
+end
+
+to findfood
+  let patchFood foodPatch
+  if [pcolor] of patchFood = green
+  [
+    ask one-of patches with [pcolor = brown]
+    [
+      set patchFood self
+    ]
+  ]
+  face patchFood
+  fd 0.25
+end
+
+to flee
+
+end
+
+to seekmate
+
+end
+
+to movetoFood
+  fd 0.25
+end
+
+to eatFood
+end
+
 
 ;;
 ;; GO LOOP
@@ -34,8 +104,8 @@ to go
   if not any? turtles [ stop ]
   ask roach
   [
-    find-food
-    move
+    ;;find-food
+    turtlefsm
     set energy energy - 1
     eat-food
     death
@@ -48,21 +118,8 @@ end
 ;;
 ;; TURTLE PROCEDURES
 ;;
-to find-food
-  ask patches [
-   if pcolor =  brown
-   [
-     set foodTarget myself
-   ]
-  ]
-end
-to move  ;; turtle procedure
-  ;; randomly rotates the turtle and
-  ;; moves it forward
-  rt random 50
-  lt random 50
-  fd 1
-end
+
+
 
 to eat-food  ;; roach procedure
   ;; if a roach passes over a green patch
@@ -174,9 +231,9 @@ HORIZONTAL
 
 BUTTON
 8
-28
+27
 77
-61
+60
 setup
 setup
 NIL
