@@ -1,5 +1,6 @@
-globals [numOfFood maxNumOfFood]  ;; keep track of how much grass there is
+globals [numOfFood maxNumOfFood roachSpeed brownpatches]  ;; keep track of how much grass there is
 breed [roach a-roach]  ;; roach is its own plural, so we use "a-roach" as the singular.
+
 turtles-own
 [
   ;;energy of agent
@@ -15,11 +16,24 @@ turtles-own
   ;; 3 = SEEK MATE
   ;; find bug of same color and mate
   state
-
+  ;;patch of food
   foodPatch
-
+  ;;age of agent
+  age
+  ;;max age of agent
+  maxAge
+  ;;age agent is ready to mate
+  matingAge
+  ;;bool for if mated
+  mated?
+  ;;agent mate
+  mate
 ]
-patches-own [countdown  foodSpawn]
+patches-own
+[
+  food
+  foodSpawn
+]
 
 
 
@@ -30,23 +44,34 @@ to setup
   clear-all
   set-default-shape turtles "bug"
   ;set all patches to green
-  ask patches [ set pcolor green ]
+  ask patches
+  [
+    set pcolor green
+    set food 500
+  ]
+  set maxNumOfFood 10
+  ask patches [sow-food]
   create-roach initial-number-roach  ;; create the roach, then initialize their variables
   [
-    set foodPatch patch-here
+    set age 0
+    set maxAge 5 + random 5
+    set matingAge maxAge - maxAge / 2
     set state 0
     set color red
     set size 1.5  ;; easier to see
     set label-color blue - 2
-    set energy random (2 * roach-gain-from-food)
+    set energy 300 + random 300
     setxy random-xcor random-ycor
+    findFood
   ]
+  set roachSpeed 0.15
+  set brownpatches patches with [pcolor = brown]
   display-labels
-  set maxNumOfFood 25
   reset-ticks
 end
 
 to turtlefsm
+  set energy energy - 1
   ifelse state = 0 [wander]
     [ifelse state = 1 [findfood]
       [ifelse state = 2 [flee]
@@ -55,8 +80,35 @@ to turtlefsm
             [ifelse state = 5 [eatfood]
               [
           ]]]]]]
-
-
+    if state = 4 and patch-here = foodPatch
+    [
+      set state 5
+    ]
+    ;; if running out of energy and not going to food or eating go to food
+    if energy <= 300 and state != 4 and state != 5
+    [
+      set state 4
+    ]
+    ;; if old and not reproduced then try to find mate
+    if age >= matingAge
+    [
+      ;;set color to blue to signify ready to reproduce
+      set color blue
+      let blueRoaches turtles with [pcolor = blue]
+      if count blueroaches > 1
+      [
+        set blueroaches remove self blueroaches
+        ask one-of blueroaches
+        [
+          set mate self
+          seekmate
+        ]
+      ]
+      if count blueroaches = 0 [wander]
+    ]
+    if energy < 0 or age > maxAge [death]
+    every 1 [set age age + 1]
+    show age
 end
 
 to wander  ;; turtle procedure
@@ -64,12 +116,12 @@ to wander  ;; turtle procedure
   ;; moves it forward
   rt random 50
   lt random 50
-  fd 0.25
-  if energy <= 0 and state != 4 [set state 1]
+  fd roachSpeed
+
 end
 
 to findfood
-  let patchFood foodPatch
+  let patchFood patch-here
   if [pcolor] of patchFood = green
   [
     ask one-of patches with [pcolor = brown]
@@ -77,8 +129,7 @@ to findfood
       set patchFood self
     ]
   ]
-  face patchFood
-  fd 0.25
+  set foodPatch patchFood
 end
 
 to flee
@@ -86,16 +137,40 @@ to flee
 end
 
 to seekmate
+  face mate
+  fd 0.15
+  ;; let distToMate mate distance myself
 
 end
 
+to mateT
+end
 to movetoFood
-  fd 0.25
+  face foodPatch
+  fd roachSpeed
 end
 
 to eatFood
+  if patch-here = foodPatch
+  [
+    set energy energy + 10
+    if energy >= 600  + random 10
+    [
+      set state 0
+    ]
+    ask foodPatch
+    [
+      set food food - 1
+      if food <= 0  [set pcolor green]
+    ]
+  ]
+
+
 end
 
+to death
+  die
+end
 
 ;;
 ;; GO LOOP
@@ -106,9 +181,7 @@ to go
   [
     ;;find-food
     turtlefsm
-    set energy energy - 1
-    eat-food
-    death
+    if [pcolor] of foodPatch = green [findFood]
   ]
   ask patches [ sow-food ]
   tick
@@ -134,10 +207,6 @@ to eat-food  ;; roach procedure
 end
 
 
-to death  ;; turtle procedure
-  ;; when energy dips below zero, die
-  ;if energy < 0 [ die ]
-end
 
 
 ;;
@@ -208,7 +277,7 @@ initial-number-roach
 initial-number-roach
 0
 250
-25
+27
 1
 1
 NIL
@@ -248,9 +317,9 @@ NIL
 
 BUTTON
 90
-28
+29
 157
-61
+62
 go
 go
 T
@@ -280,6 +349,7 @@ true
 "" ""
 PENS
 "roaches" 1.0 0 -13345367 true "" "plot count roach"
+"food " 1.0 0 -10402772 true "" "plot count brownpatches"
 
 MONITOR
 12
