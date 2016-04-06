@@ -1,5 +1,22 @@
-globals [numOfFood maxNumOfFood roachSpeed brownpatches]  ;; keep track of how much grass there is
+globals
+[
+  numOfFood
+  roachSpeed
+  brownpatches
+  blueRoaches
+  redRoaches
+  successfullRoaches
+  unsucessfullRoaches
+  deathByAge
+  deathByFood
+  deathByPred
+  roachesBorn
+  roachesDied
+  possibleMates
+  maxEnergy
+]
 breed [roach a-roach]  ;; roach is its own plural, so we use "a-roach" as the singular.
+breed [predator a-pred]
 
 turtles-own
 [
@@ -28,6 +45,12 @@ turtles-own
   mated?
   ;;agent mate
   mate
+  ;;if has mate
+  hasMate
+  ;;safe distance to predator
+  safeDist
+  ;;caching predator
+  closestPredator
 ]
 patches-own
 [
@@ -42,73 +65,200 @@ patches-own
 ;;
 to setup
   clear-all
-  set-default-shape turtles "bug"
+  set-default-shape roach "bug"
+  set-default-shape predator "default"
+  set maxEnergy 1500
   ;set all patches to green
   ask patches
   [
     set pcolor green
     set food 500
   ]
-  set maxNumOfFood 10
   ask patches [sow-food]
-  create-roach initial-number-roach  ;; create the roach, then initialize their variables
+  create-roach initial-number-roach ;; create the roach, then initialize their variables
   [
+    setupRoach true
+  ]
+  create-predator initial-number-predators
+  [
+    set energy 500 + random 500
+    set size 1.5
+    set color black
+    set state 0
+    setxy random-xcor random-ycor
+  ]
+  set roachSpeed 0.15
+  set brownpatches patches with [pcolor = brown]
+  set blueRoaches roach with [pcolor = blue]
+  set redRoaches roach with [pcolor = red]
+  display-labels
+  set successfullRoaches 0
+  reset-ticks
+end
+
+to setupRoach [rand]
     set age 0
-    set maxAge 5 + random 5
-    set matingAge maxAge - maxAge / 2
+    set maxAge 1000 + random 500
+    set matingAge maxAge / 4
     set state 0
     set color red
     set size 1.5  ;; easier to see
     set label-color blue - 2
-    set energy 300 + random 300
-    setxy random-xcor random-ycor
-    findFood
-  ]
-  set roachSpeed 0.15
-  set brownpatches patches with [pcolor = brown]
-  display-labels
-  reset-ticks
+    set energy maxEnergy / 2 + random maxEnergy / 2
+    if rand = true
+    [
+      setxy random-xcor random-ycor
+    ]
+    set hasMate false
+    set mated? false
+    set safeDist 5
+    set foodPatch patch-here
+    set roachesBorn roachesBorn + 1
 end
 
-to turtlefsm
+
+;;
+;; GO LOOP
+;;
+to go
+  if not any? roach [ stop ]
+  ask roach[roachFSM]
+  ask predator[predFSM]
+  ask patches [ sow-food ]
+  set redRoaches roach with [color = red]
+  tick
+  display-labels
+end
+
+;;
+;; TURTLE PROCEDURES
+;;
+
+
+to roachFSM
   set energy energy - 1
   ifelse state = 0 [wander]
-    [ifelse state = 1 [findfood]
+    [ifelse state = 1 [flee]
       [ifelse state = 2 [flee]
         [ifelse state = 3 [seekmate]
           [ifelse state = 4 [movetofood]
             [ifelse state = 5 [eatfood]
               [
           ]]]]]]
-    if state = 4 and patch-here = foodPatch
+    set closestPredator min-one-of predator [ distance myself ]
+    if [distance closestPredator] of self > safeDist
     [
-      set state 5
-    ]
-    ;; if running out of energy and not going to food or eating go to food
-    if energy <= 300 and state != 4 and state != 5
-    [
-      set state 4
-    ]
-    ;; if old and not reproduced then try to find mate
-    if age >= matingAge
-    [
-      ;;set color to blue to signify ready to reproduce
-      set color blue
-      let blueRoaches turtles with [pcolor = blue]
-      if count blueroaches > 1
+      if state = 4 and [pcolor] of patch-here = brown
       [
-        set blueroaches remove self blueroaches
-        ask one-of blueroaches
-        [
-          set mate self
-          seekmate
-        ]
+        set state 5
       ]
-      if count blueroaches = 0 [wander]
+
+      if state = 5 and [pcolor] of patch-here = green
+      [
+        set state 0
+      ]
+      ;; if running out of energy and not going to food or eating go to food
+      if energy <= maxEnergy / 2 and patch-here != foodPatch
+      [
+        set state 4
+      ]
+      ;; if old and not reproduced then try to find mate
+      if age >= matingAge and state != 3 and mated? = false and energy > maxEnergy - maxEnergy / 4
+      [
+        ;;set color to blue to signify ready to reproduce
+        set color blue
+        set blueRoaches (turtle-set blueRoaches self)
+        findMate
+        if count blueroaches = 0 [wander]
+      ]
     ]
-    if energy < 0 or age > maxAge [death]
+    if[distance closestPredator] of self < safeDist
+    [
+      set state 2
+    ]
+    if energy < 0
+    [
+      death "food"
+    ]
+    if age > maxAge
+    [
+      death "age"
+    ]
     every 1 [set age age + 1]
-    show age
+end
+
+
+
+to predFSM
+  if state = 0 [sleep]
+  if state = 1 [hunt]
+end
+
+to sleep
+  set energy energy - 1
+  if energy <= 0[set state 1]
+end
+
+to hunt
+  if not any? roach [ stop ]
+  let prey min-one-of roach [ distance myself ]
+  face prey
+  fd roachSpeed * 1.5
+  let distToPrey distance prey
+  if distToPrey <= 1
+  [
+    ask prey
+    [
+      death "pred"
+    ]
+      set state 0
+      set energy 500 + random 500
+  ]
+end
+
+to findFood
+  let foodPatches patches with [pcolor = brown]
+  let closestPred closestPredator
+  let safeDistance safeDist
+  ask foodPatches
+  [
+    let distToPred [distance closestPred] of self
+    if distToPred < safeDistance * 2
+    [
+      set foodPatches foodPatches with [self != myself]
+    ]
+  ]
+  set foodPatch min-one-of foodPatches [ distance myself ]
+end
+
+to findMate
+  if (count blueRoaches > 1 and hasMate = false)
+  [
+    ;; set up personal agentset of blue roaches
+    set possibleMates blueRoaches
+    ;; remove self from list as cant mate with self
+    set possibleMates possibleMates with [self != myself]
+    ask possibleMates
+    [
+      if hasMate = true
+      [
+        set possibleMates possibleMates with [self != myself]
+      ]
+    ]
+    set mate one-of possibleMates
+    ;;randomly pick one
+    if mate != nobody
+    [
+    ask mate
+    [
+      set mate myself
+      set hasMate true
+      set state 3
+    ]
+    set state 3
+    set hasMate true
+    ]
+  ]
 end
 
 to wander  ;; turtle procedure
@@ -120,32 +270,51 @@ to wander  ;; turtle procedure
 
 end
 
-to findfood
-  let patchFood patch-here
-  if [pcolor] of patchFood = green
-  [
-    ask one-of patches with [pcolor = brown]
-    [
-      set patchFood self
-    ]
-  ]
-  set foodPatch patchFood
-end
 
 to flee
-
+  face closestPredator
+  rt 180
+  fd roachSpeed
 end
 
 to seekmate
-  face mate
-  fd 0.15
-  ;; let distToMate mate distance myself
+  if mate = nobody
+  [
+    findMate
+    set state 0
+  ]
+  if mate != nobody
+  [
+    face mate
+    fd 0.15
+    if [distance mate] of self < 2 and mate != self and mated? = false
+    [
+      set successfullRoaches successfullRoaches + 1
+      ask mate
+      [
+        set mated? true
+        set color red
+      ]
+      let numOffspring random 4
+      if numOffspring = 0 or numoffSpring = 1 [set numOffspring 2]
+      show numOffspring
+      hatch-roach numOffspring
+      [
+        setupRoach false
+      ]
+      set state 0
+      set mated? true
+      set color red
+    ]
+  ]
+
+
 
 end
 
-to mateT
-end
+
 to movetoFood
+  if foodPatch = nobody or [pcolor] of foodPatch = green[findFood]
   face foodPatch
   fd roachSpeed
 end
@@ -153,58 +322,39 @@ end
 to eatFood
   if patch-here = foodPatch
   [
-    set energy energy + 10
-    if energy >= 600  + random 10
+    set energy energy + 20
+    if energy >= maxEnergy / 2 + maxEnergy / 4 + maxEnergy / 5
     [
       set state 0
     ]
-    ask foodPatch
+    ask patch-here
     [
-      set food food - 1
-      if food <= 0  [set pcolor green]
+      set food food - 10
+      if food <= 0
+      [
+        set pcolor green
+        set numOfFood numOfFood - 1
+      ]
     ]
   ]
 
 
 end
 
-to death
+to death[cause]
+  ifelse cause = "food"[set deathByFood deathByFood + 1]
+  [ifelse cause = "age"[set deathByAge deathByAge + 1]
+  [ifelse cause = "pred"[set deathByPred deathByPred + 1]
+  []]]
+  set roachesDied roachesDied + 1
+  if mated? = false [set unsucessfullRoaches unsucessfullRoaches + 1]
   die
 end
 
-;;
-;; GO LOOP
-;;
-to go
-  if not any? turtles [ stop ]
-  ask roach
-  [
-    ;;find-food
-    turtlefsm
-    if [pcolor] of foodPatch = green [findFood]
-  ]
-  ask patches [ sow-food ]
-  tick
-  display-labels
-end
-
-;;
-;; TURTLE PROCEDURES
-;;
 
 
 
-to eat-food  ;; roach procedure
-  ;; if a roach passes over a green patch
-  ;; the roach will "eat" the green patch
-  ;; turning it brown and increasing their energy
-  ;; also decreasing the amount of food in the world
-  if pcolor = brown [
-    set pcolor green
-    set energy energy + roach-gain-from-food  ;; roach gain energy by eating
-    set numOfFood numOfFood - 1
-  ]
-end
+
 
 
 
@@ -218,7 +368,7 @@ to sow-food ;; patch procedure
   ;; if there is too much food no food will be created
   ;; else food will be created randomly around the area on green patches
   if pcolor = green [
-    if maxNumOfFood > numOfFood
+    if numOfFood < total-food
     [
       set foodSpawn random 100
       if foodSpawn >= 90
@@ -277,22 +427,22 @@ initial-number-roach
 initial-number-roach
 0
 250
-27
+20
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-3
-187
-177
-220
+4
+256
+178
+289
 roach-gain-from-food
 roach-gain-from-food
 0.0
 50.0
-4
+11
 1.0
 1
 NIL
@@ -316,10 +466,10 @@ NIL
 1
 
 BUTTON
-90
-29
-157
-62
+89
+28
+156
+61
 go
 go
 T
@@ -349,18 +499,6 @@ true
 "" ""
 PENS
 "roaches" 1.0 0 -13345367 true "" "plot count roach"
-"food " 1.0 0 -10402772 true "" "plot count brownpatches"
-
-MONITOR
-12
-264
-83
-309
-roaches
-count roach
-3
-1
-11
 
 TEXTBOX
 8
@@ -382,6 +520,113 @@ show-energy?
 1
 1
 -1000
+
+PLOT
+807
+10
+1007
+160
+Cause of Death
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"Food" 1.0 0 -2674135 true "" "plot deathByFood"
+"Age" 1.0 0 -14070903 true "" "plot deathByAge"
+"Predator" 1.0 0 -13840069 true "" "plot deathByPred"
+
+SLIDER
+3
+220
+175
+253
+total-Food
+total-Food
+0
+100
+10
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+3
+185
+185
+218
+initial-number-predators
+initial-number-predators
+0
+20
+1
+1
+1
+NIL
+HORIZONTAL
+
+PLOT
+807
+161
+1007
+311
+Juv/Adult Roaches
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"non-mating" 1.0 0 -2674135 true "" "plot count redRoaches"
+"mating" 1.0 0 -13791810 true "" "plot count blueRoaches"
+
+PLOT
+807
+312
+1007
+462
+Roaches Created/Died
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"Born" 1.0 0 -2674135 true "" "plot roachesBorn"
+"Died" 1.0 0 -13345367 true "" "plot roachesDied"
+
+PLOT
+1008
+10
+1208
+160
+Successfull Roaches
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"Bred" 1.0 0 -2674135 true "" "plot successfullRoaches"
+"No Bred" 1.0 0 -13791810 true "" "plot unsucessfullRoaches"
 
 @#$#@#$#@
 ## WHAT IS IT?
