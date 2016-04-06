@@ -14,6 +14,7 @@ globals
   roachesDied
   possibleMates
   maxEnergy
+  foodTicks
 ]
 breed [roach a-roach]  ;; roach is its own plural, so we use "a-roach" as the singular.
 breed [predator a-pred]
@@ -74,7 +75,7 @@ to setup
     set pcolor green
     set food 500
   ]
-  ask patches [sow-food]
+  sow-food
   create-roach initial-number-roach ;; create the roach, then initialize their variables
   [
     setupRoach true
@@ -93,6 +94,8 @@ to setup
   set redRoaches roach with [pcolor = red]
   display-labels
   set successfullRoaches 0
+  show numOfFood
+  show total-food
   reset-ticks
 end
 
@@ -124,7 +127,14 @@ to go
   if not any? roach [ stop ]
   ask roach[roachFSM]
   ask predator[predFSM]
-  ask patches [ sow-food ]
+  
+  set foodTicks foodTicks + 1
+  if foodTicks >= max-food-ticks
+  [
+    sow-food
+    set foodTicks 0
+  ]
+
   set redRoaches roach with [color = red]
   tick
   display-labels
@@ -249,14 +259,14 @@ to findMate
     ;;randomly pick one
     if mate != nobody
     [
-    ask mate
-    [
-      set mate myself
-      set hasMate true
+      ask mate
+      [
+        set mate myself
+        set hasMate true
+        set state 3
+      ]
       set state 3
-    ]
-    set state 3
-    set hasMate true
+      set hasMate true
     ]
   ]
 end
@@ -297,7 +307,6 @@ to seekmate
       ]
       let numOffspring random 4
       if numOffspring = 0 or numoffSpring = 1 [set numOffspring 2]
-      show numOffspring
       hatch-roach numOffspring
       [
         setupRoach false
@@ -315,7 +324,7 @@ end
 
 to movetoFood
   if foodPatch = nobody or [pcolor] of foodPatch = green[findFood]
-  face foodPatch
+  if foodPatch != nobody [face foodPatch]
   fd roachSpeed
 end
 
@@ -367,17 +376,16 @@ to sow-food ;; patch procedure
   ;; there is a maximum amount of food at any one time denoted by maxNumofFood
   ;; if there is too much food no food will be created
   ;; else food will be created randomly around the area on green patches
-  if pcolor = green [
-    if numOfFood < total-food
+  while [numOfFood < total-Food]
+  [
+    ask one-of patches with [pcolor = green]
     [
-      set foodSpawn random 100
-      if foodSpawn >= 90
-      [
-        set pcolor brown
-        set numOfFood numOfFood + 1
-      ]
+      set pcolor brown
+      set food 500
+      set numOfFood numOfFood + 1
     ]
   ]
+
 end
 
 
@@ -394,11 +402,11 @@ end
 GRAPHICS-WINDOW
 338
 10
-807
-500
+953
+646
 25
 25
-9.0
+11.863
 1
 14
 1
@@ -426,7 +434,7 @@ SLIDER
 initial-number-roach
 initial-number-roach
 0
-250
+50
 20
 1
 1
@@ -466,9 +474,9 @@ NIL
 1
 
 BUTTON
-89
+86
 28
-156
+153
 61
 go
 go
@@ -522,9 +530,9 @@ show-energy?
 -1000
 
 PLOT
-807
+957
 10
-1007
+1157
 160
 Cause of Death
 NIL
@@ -550,7 +558,7 @@ total-Food
 total-Food
 0
 100
-10
+1
 1
 1
 NIL
@@ -572,9 +580,9 @@ NIL
 HORIZONTAL
 
 PLOT
-807
+957
 161
-1007
+1157
 311
 Juv/Adult Roaches
 NIL
@@ -591,9 +599,9 @@ PENS
 "mating" 1.0 0 -13791810 true "" "plot count blueRoaches"
 
 PLOT
-807
+957
 312
-1007
+1157
 462
 Roaches Created/Died
 NIL
@@ -610,9 +618,9 @@ PENS
 "Died" 1.0 0 -13345367 true "" "plot roachesDied"
 
 PLOT
-1008
+1158
 10
-1208
+1358
 160
 Successfull Roaches
 NIL
@@ -627,6 +635,17 @@ true
 PENS
 "Bred" 1.0 0 -2674135 true "" "plot successfullRoaches"
 "No Bred" 1.0 0 -13791810 true "" "plot unsucessfullRoaches"
+
+INPUTBOX
+12
+512
+95
+572
+max-food-ticks
+100
+1
+0
+Number
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -969,7 +988,7 @@ Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 
 @#$#@#$#@
-NetLogo 5.3
+NetLogo 5.1.0
 @#$#@#$#@
 setup
 set grass? true
